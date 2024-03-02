@@ -34,6 +34,7 @@ M.start = function(args)
 	local cmdline = {}
 	local filename = nil
 	local value = nil
+	local envVar = nil
 	table.insert(cmdline, M.opts.command)
 	for k, v in pairs(M.opts) do
 		if k == "command" or k == "gobble" or k == "num_separator" then
@@ -46,8 +47,23 @@ M.start = function(args)
 			else
 				value = v
 			end
-			table.insert(cmdline, value)
-			if k == "output" then filename = value end
+
+			if k == "output" then
+				value = tostring(value)
+				local firstCharacter = string.sub(value, 1)
+				local slashIndex = string.find(value, "/")
+				if firstCharacter == "$" then
+					envVar = GetEnvVariable(value)
+					if slashIndex then
+						filename = envVar .. string.sub(value, slashIndex, -1)
+					end
+				else
+					filename = value
+				end
+				table.insert(cmdline, filename)
+			else
+				table.insert(cmdline, value)
+			end
 		else
 			if type(v) == "boolean" then
 				if v then
@@ -95,11 +111,7 @@ M.start = function(args)
 	-- print(require("silicon.utils").dump(cmdline))
 	local ret = vim.fn.system(cmdline, lines)
 	if ret ~= "" then
-		return vim.notify(
-			"silicon returned with: " .. ret,
-			vim.log.levels.WARN,
-			{ title = "nvim-silicon" }
-		)
+		return vim.notify("silicon returned with: " .. ret, vim.log.levels.WARN, { title = "nvim-silicon" })
 	else
 		if M.opts.to_clipboard then
 			return vim.notify(
@@ -108,11 +120,13 @@ M.start = function(args)
 				{ title = "nvim-silicon" }
 			)
 		else
-			return vim.notify(
-				"silicon generated image: " .. vim.fn.getcwd() .. "/" .. filename,
-				vim.log.levels.INFO,
-				{ title = "nvim-silicon" }
-			)
+			local info = function()
+				if string.sub(tostring(filename), 1, 1) == "/" then
+					return "silicon generated image: " .. filename
+				end
+				return "silicon generated image: " .. vim.fn.getcwd() .. "/" .. filename
+			end
+			return vim.notify(info(), vim.log.levels.INFO, { title = "nvim-silicon" })
 		end
 	end
 end
@@ -135,6 +149,13 @@ M.setup = function(opts)
 		force = false,
 		range = true
 	})
+end
+
+GetEnvVariable = function(inputString)
+	local slashIndex = string.find(inputString, "/")
+	local envVarName = string.sub(inputString, 2, (slashIndex and slashIndex - 1) or -1)
+
+	return vim.fn.getenv(envVarName)
 end
 
 return M
